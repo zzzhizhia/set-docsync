@@ -42,6 +42,20 @@ describe("parseRemoteURL", () => {
   it("returns empty for empty string", () => {
     expect(parseRemoteURL("")).toEqual({ owner: "", repo: "" });
   });
+
+  it("rejects notgithub.com (HTTPS)", () => {
+    expect(parseRemoteURL("https://notgithub.com/owner/repo.git")).toEqual({
+      owner: "",
+      repo: "",
+    });
+  });
+
+  it("rejects notgithub.com (SSH)", () => {
+    expect(parseRemoteURL("git@notgithub.com:owner/repo.git")).toEqual({
+      owner: "",
+      repo: "",
+    });
+  });
 });
 
 describe("normalizePath", () => {
