@@ -22,6 +22,15 @@
     "cli"
   ],
   "license": "MIT",
+  "author": "zzzhizhi",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zzzhizhia/set-sync-docs.git"
+  },
+  "homepage": "https://github.com/zzzhizhia/set-sync-docs",
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
     "@inquirer/prompts": "^7.5.3",
     "picocolors": "^1.1.1"
