@@ -1,5 +1,5 @@
 import { input, confirm } from "@inquirer/prompts";
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import pc from "picocolors";
 import type { Config, GitContext } from "./index.js";
 
@@ -53,7 +53,7 @@ export async function checkTargetRepo(owner: string, repo: string): Promise<void
   }
 
   try {
-    execSync(`gh api repos/${owner}/${repo}`, { stdio: "ignore" });
+    execFileSync("gh", ["api", `repos/${owner}/${repo}`], { stdio: "ignore" });
     console.log(pc.green(`✓ 目标仓库 ${owner}/${repo} 存在`));
   } catch {
     console.log(pc.yellow(`⚠ 无法访问 ${owner}/${repo}（可能是私有仓库或尚未创建）。工作流仍会生成。`));
