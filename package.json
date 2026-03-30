@@ -1,0 +1,35 @@
+{
+  "name": "set-sync-docs",
+  "version": "0.1.0",
+  "description": "Configure GitHub Actions workflow to sync docs to a target repository",
+  "type": "module",
+  "bin": {
+    "set-sync-docs": "./dist/index.mjs"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run"
+  },
+  "keywords": [
+    "github-actions",
+    "docs",
+    "sync",
+    "workflow",
+    "cli"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@inquirer/prompts": "^7.5.3",
+    "picocolors": "^1.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.2"
+  }
+}
