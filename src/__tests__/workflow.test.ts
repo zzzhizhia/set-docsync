@@ -132,7 +132,7 @@ describe("generateYaml (push)", () => {
     expect(yaml).toContain('dst_repo_name: "wiki"');
     expect(yaml).toContain('src_path: "/docs/."');
     expect(yaml).toContain("copycat-action@v3");
-    expect(yaml).toContain("PAT_SET_SYNC_DOCS");
+    expect(yaml).toContain("GITHUB_PAT_DOCSYNC");
     // No schedule trigger for push-only
     expect(yaml).not.toContain("schedule:");
     // No pull job
@@ -158,7 +158,7 @@ describe("generateYaml (push)", () => {
 
   it("preserves ${{ }} expressions", () => {
     const yaml = generateYaml(pushConfig);
-    expect(yaml).toContain("${{ secrets.PAT_SET_SYNC_DOCS }}");
+    expect(yaml).toContain("${{ secrets.GITHUB_PAT_DOCSYNC }}");
     expect(yaml).toContain("${{ github.repository }}");
     expect(yaml).toContain("${{ github.sha }}");
     expect(yaml).not.toContain("\\${{");
@@ -191,7 +191,7 @@ describe("generateYaml (pull)", () => {
     expect(yaml).toContain("rsync -av --delete");
     expect(yaml).toContain("docs/website/");
     expect(yaml).toContain("git commit");
-    expect(yaml).toContain("PAT_SET_SYNC_DOCS");
+    expect(yaml).toContain("GITHUB_PAT_DOCSYNC");
     // No push trigger for pull-only
     expect(yaml).not.toContain("  push:");
     // No push job

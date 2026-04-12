@@ -79,7 +79,7 @@ function printPATReminder(ctx: GitContext): void {
   console.log(`     https://github.com/settings/tokens/new`);
   console.log();
   console.log(`  2. Add the PAT as a secret on ${pc.bold("this repo")} (where the workflow runs):`);
-  console.log(pc.dim(`     gh secret set PAT_SET_SYNC_DOCS`));
+  console.log(pc.dim(`     gh secret set GITHUB_PAT_DOCSYNC`));
   if (ctx.owner && ctx.repo) {
     console.log();
     console.log(`     Or set it in the browser:`);
@@ -89,7 +89,7 @@ function printPATReminder(ctx: GitContext): void {
 }
 
 async function main(): Promise<void> {
-  console.log(pc.bold("\n🔄 set-sync-docs — Configure docs sync workflow\n"));
+  console.log(pc.bold("\n🔄 set-docsync — Configure docs sync workflow\n"));
 
   // Phase 1: detect git context
   let ctx: GitContext;

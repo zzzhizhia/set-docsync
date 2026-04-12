@@ -1,10 +1,10 @@
 {
-  "name": "set-sync-docs",
-  "version": "2.0.0",
-  "description": "Configure GitHub Actions workflow to sync docs to a target repository",
+  "name": "set-docsync",
+  "version": "1.0.0",
+  "description": "Configure GitHub Actions workflow to sync docs between repositories",
   "type": "module",
   "bin": {
-    "set-sync-docs": "./dist/index.mjs"
+    "set-docsync": "./dist/index.mjs"
   },
   "files": [
     "dist"
@@ -25,9 +25,9 @@
   "author": "zzzhizhi",
   "repository": {
     "type": "git",
-    "url": "https://github.com/zzzhizhia/set-sync-docs.git"
+    "url": "https://github.com/zzzhizhia/set-docsync.git"
   },
-  "homepage": "https://github.com/zzzhizhia/set-sync-docs",
+  "homepage": "https://github.com/zzzhizhia/set-docsync",
   "packageManager": "pnpm@10.33.0",
   "engines": {
     "node": ">=20"

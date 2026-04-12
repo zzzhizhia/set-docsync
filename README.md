@@ -1,14 +1,14 @@
-# set-sync-docs
+# set-docsync
 
 Interactive CLI to set up GitHub Actions workflows that sync documentation between repositories. Supports **push** (on commit), **pull** (on schedule), or **both** — with multi-repo targets.
 
 ## Quick Start
 
 ```bash
-npx set-sync-docs
+npx set-docsync
 ```
 
-Run this inside any GitHub repository. The CLI walks you through configuration and generates `.github/workflows/sync-docs.yml`.
+Run this inside any GitHub repository. The CLI walks you through configuration and generates `.github/workflows/docsync.yml`.
 
 ## Sync Modes
 
@@ -23,9 +23,9 @@ Each mode supports **multiple targets/sources** in a single workflow.
 ## Example
 
 ```
-$ npx set-sync-docs
+$ npx set-docsync
 
-🔄 set-sync-docs — Configure docs sync workflow
+🔄 set-docsync — Configure docs sync workflow
 
 Detected repo: myorg/website (main)
 
@@ -49,7 +49,7 @@ Configuration summary:
 
 ? Generate workflow file? Yes
 
-✅ Written to /path/to/website/.github/workflows/sync-docs.yml
+✅ Written to /path/to/website/.github/workflows/docsync.yml
 ```
 
 ## Generated Workflows
@@ -81,7 +81,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: andstor/copycat-action@v3
         with:
-          personal_token: ${{ secrets.PAT_SET_SYNC_DOCS }}
+          personal_token: ${{ secrets.GITHUB_PAT_DOCSYNC }}
           src_path: "/docs/."
           dst_path: ${{ matrix.dst_path }}
           dst_owner: ${{ matrix.dst_owner }}
@@ -111,7 +111,7 @@ jobs:
         with:
           repository: "myorg/website"
           ref: "main"
-          token: ${{ secrets.PAT_SET_SYNC_DOCS }}
+          token: ${{ secrets.GITHUB_PAT_DOCSYNC }}
           path: _src_0
           sparse-checkout: "docs"
 
@@ -145,7 +145,7 @@ The workflow needs a Personal Access Token with **repo** scope:
 1. Create a PAT at [github.com/settings/tokens/new](https://github.com/settings/tokens/new)
 2. Add it as a repository secret:
    ```bash
-   gh secret set PAT_SET_SYNC_DOCS
+   gh secret set GITHUB_PAT_DOCSYNC
    ```
 
 The secret is added to the repo **where the workflow runs**.
