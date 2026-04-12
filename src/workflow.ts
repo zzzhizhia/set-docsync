@@ -1,5 +1,5 @@
 import { confirm } from "@inquirer/prompts";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Config } from "./index.js";
 
@@ -162,14 +162,25 @@ ${pullSteps.join("\n")}
           fi`;
 }
 
-export async function writeWorkflow(cwd: string, yaml: string): Promise<boolean> {
+export function readExistingConfig(cwd: string): Config | null {
+  const configPath = join(cwd, ".github", "docsync.json");
+  if (!existsSync(configPath)) return null;
+  try {
+    return JSON.parse(readFileSync(configPath, "utf-8")) as Config;
+  } catch {
+    return null;
+  }
+}
+
+export async function writeWorkflow(cwd: string, yaml: string, config: Config): Promise<boolean> {
   const dir = join(cwd, ".github", "workflows");
   const filePath = join(dir, "docsync.yml");
+  const configPath = join(cwd, ".github", "docsync.json");
 
   if (existsSync(filePath)) {
     const overwrite = await confirm({
       message: `${filePath} already exists. Overwrite?`,
-      default: false,
+      default: true,
     });
     if (!overwrite) {
       console.log("Write cancelled.");
@@ -179,6 +190,7 @@ export async function writeWorkflow(cwd: string, yaml: string): Promise<boolean>
 
   mkdirSync(dir, { recursive: true });
   writeFileSync(filePath, yaml, "utf-8");
+  writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
   console.log(`\n✅ Written to ${filePath}`);
   return true;
 }

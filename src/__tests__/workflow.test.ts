@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
+import { mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { parseRemoteURL } from "../index.js";
-import { normalizePath, normalizeConfig, generateYaml } from "../workflow.js";
+import { normalizePath, normalizeConfig, generateYaml, readExistingConfig } from "../workflow.js";
 import type { Config } from "../index.js";
 
 describe("parseRemoteURL", () => {
@@ -273,5 +276,47 @@ describe("normalizeConfig", () => {
     expect(config.pushTargets[0].dstPath).toBe("out/");
     expect(config.pullSources[0].srcPath).toBe("src/");
     expect(config.pullSources[0].dstPath).toBe("dst/");
+  });
+});
+
+// ── readExistingConfig ──
+
+describe("readExistingConfig", () => {
+  const testDir = join(tmpdir(), "docsync-test-" + Date.now());
+
+  it("returns null when no config file exists", () => {
+    expect(readExistingConfig(testDir)).toBeNull();
+  });
+
+  it("reads and parses existing config", () => {
+    const configDir = join(testDir, ".github");
+    mkdirSync(configDir, { recursive: true });
+
+    const config: Config = {
+      mode: "push",
+      pushSrcPath: "docs/",
+      pushSrcBranch: "main",
+      pushTargets: [
+        { dstOwner: "org", dstRepoName: "wiki", dstPath: "docs/web/", dstBranch: "main", clean: true },
+      ],
+      pullBranch: "",
+      pullSources: [],
+    };
+    writeFileSync(join(configDir, "docsync.json"), JSON.stringify(config));
+
+    const result = readExistingConfig(testDir);
+    expect(result).toEqual(config);
+
+    rmSync(testDir, { recursive: true, force: true });
+  });
+
+  it("returns null for invalid JSON", () => {
+    const configDir = join(testDir, ".github");
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, "docsync.json"), "not json");
+
+    expect(readExistingConfig(testDir)).toBeNull();
+
+    rmSync(testDir, { recursive: true, force: true });
   });
 });

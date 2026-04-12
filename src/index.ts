@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import pc from "picocolors";
 import { collectConfig, checkRepos, confirmGeneration } from "./prompts.js";
-import { normalizeConfig, generateYaml, writeWorkflow } from "./workflow.js";
+import { normalizeConfig, generateYaml, writeWorkflow, readExistingConfig } from "./workflow.js";
 
 export interface GitContext {
   root: string;
@@ -104,8 +104,9 @@ async function main(): Promise<void> {
     console.log(pc.dim(`Detected repo: ${ctx.owner}/${ctx.repo} (${ctx.branch})\n`));
   }
 
-  // Phase 2: collect config
-  const rawConfig = await collectConfig(ctx);
+  // Phase 2: collect config (with existing config if available)
+  const existing = readExistingConfig(ctx.root);
+  const rawConfig = await collectConfig(ctx, existing);
   const config = normalizeConfig(rawConfig);
 
   // Phase 3: check repos
@@ -119,7 +120,7 @@ async function main(): Promise<void> {
   }
 
   const yaml = generateYaml(config);
-  const written = await writeWorkflow(ctx.root, yaml);
+  const written = await writeWorkflow(ctx.root, yaml, config);
 
   if (written) {
     printPATReminder(ctx);

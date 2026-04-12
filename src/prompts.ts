@@ -3,7 +3,59 @@ import { execFileSync, execSync } from "node:child_process";
 import pc from "picocolors";
 import type { Config, GitContext, SyncMode, PushTarget, PullSource } from "./index.js";
 
-export async function collectConfig(ctx: GitContext): Promise<Config> {
+export async function collectConfig(ctx: GitContext, existing: Config | null): Promise<Config> {
+  if (existing) {
+    return await handleExistingConfig(ctx, existing);
+  }
+  return await collectFreshConfig(ctx);
+}
+
+async function handleExistingConfig(ctx: GitContext, existing: Config): Promise<Config> {
+  console.log(pc.bold("Existing configuration found:"));
+  console.log(`  Mode: ${existing.mode}`);
+  if (existing.pushTargets.length > 0) {
+    for (const t of existing.pushTargets) {
+      console.log(`  Push → ${t.dstOwner}/${t.dstRepoName}:${t.dstPath}`);
+    }
+  }
+  if (existing.pullSources.length > 0) {
+    for (const s of existing.pullSources) {
+      console.log(`  Pull ← ${s.srcOwner}/${s.srcRepoName}:${s.srcPath}`);
+    }
+  }
+  console.log();
+
+  const action = await select<"extend" | "reconfigure">({
+    message: "What would you like to do?",
+    choices: [
+      { value: "extend", name: "Add more targets/sources to existing config" },
+      { value: "reconfigure", name: "Reconfigure from scratch" },
+    ],
+  });
+
+  if (action === "reconfigure") {
+    return await collectFreshConfig(ctx);
+  }
+
+  // Extend existing config
+  const config = { ...existing };
+
+  if (config.mode === "push" || config.mode === "both") {
+    console.log(pc.bold("\n── Add push targets ──\n"));
+    const newTargets = await collectPushTargets(ctx);
+    config.pushTargets = [...config.pushTargets, ...newTargets];
+  }
+
+  if (config.mode === "pull" || config.mode === "both") {
+    console.log(pc.bold("\n── Add pull sources ──\n"));
+    const newSources = await collectPullSources(ctx);
+    config.pullSources = [...config.pullSources, ...newSources];
+  }
+
+  return config;
+}
+
+async function collectFreshConfig(ctx: GitContext): Promise<Config> {
   const mode = await select<SyncMode>({
     message: "Sync mode",
     choices: [
