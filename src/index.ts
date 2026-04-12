@@ -225,7 +225,7 @@ async function main(): Promise<void> {
     }
     const config = normalizeConfig(cliConfig);
     const yaml = generateYaml(config);
-    await writeWorkflow(ctx.root, yaml, config);
+    await writeWorkflow(ctx.root, yaml, config, false);
     return;
   }
 

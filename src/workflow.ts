@@ -172,12 +172,12 @@ export function readExistingConfig(cwd: string): Config | null {
   }
 }
 
-export async function writeWorkflow(cwd: string, yaml: string, config: Config): Promise<boolean> {
+export async function writeWorkflow(cwd: string, yaml: string, config: Config, interactive = true): Promise<boolean> {
   const dir = join(cwd, ".github", "workflows");
   const filePath = join(dir, "docsync.yml");
   const configPath = join(cwd, ".github", "docsync.json");
 
-  if (existsSync(filePath)) {
+  if (interactive && existsSync(filePath)) {
     const overwrite = await confirm({
       message: `${filePath} already exists. Overwrite?`,
       default: true,
