@@ -20101,7 +20101,7 @@ async function runPush(opts) {
       }
       const dstFull = (0, import_node_path3.join)(targetDir, dstAbs) + "/";
       await (0, import_promises3.mkdir)(dstFull, { recursive: true });
-      const srcFull = (0, import_node_path3.join)(opts.sourceRepoRoot, opts.srcPath);
+      const srcFull = (0, import_node_path3.join)(opts.sourceRepoRoot, opts.srcPath) + "/";
       await rsyncInto(srcFull, dstFull, false);
       if (opts.dedup) {
         const replaced = await dedupeDirs([dstFull.replace(/\/$/, "")]);
@@ -20135,7 +20135,7 @@ async function runPull(opts) {
       await cloneSourceSparse(source, opts.token, srcDir);
       const dstFull = (0, import_node_path3.join)(opts.hubRoot, source.dstPath);
       await (0, import_promises3.mkdir)(dstFull, { recursive: true });
-      const srcFull = (0, import_node_path3.join)(srcDir, source.srcPath);
+      const srcFull = (0, import_node_path3.join)(srcDir, source.srcPath) + "/";
       await rsyncInto(srcFull, dstFull, true);
       await (0, import_promises3.rm)(srcDir, { recursive: true, force: true });
       shas[key] = current;

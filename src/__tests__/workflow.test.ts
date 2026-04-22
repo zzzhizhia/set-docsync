@@ -106,6 +106,26 @@ describe("generateYaml", () => {
     expect(yaml).not.toContain("ref:");
   });
 
+  it("serializes whole-repo pull sources with explicit / for srcPath", () => {
+    // Empty srcPath means "sync the whole repo". If serialized as an empty
+    // segment (owner/repo::dst@branch), the parser's default kicks in and
+    // sync silently narrows to a non-existent docs/ subdir.
+    const wholeRepoConfig: CLIConfig = {
+      pushSrcPath: "",
+      pushSrcBranch: "",
+      pushTargets: [],
+      pullBranch: "main",
+      pullSources: [
+        { srcOwner: "org", srcRepoName: "wiki", srcPath: "", dstPath: "raw/wiki/", srcBranch: "main" },
+      ],
+      dedup: false,
+      clean: true,
+    };
+    const yaml = generateYaml(wholeRepoConfig);
+    expect(yaml).toContain("org/wiki:/:raw/wiki/@main");
+    expect(yaml).not.toContain("org/wiki::raw/wiki/@main");
+  });
+
   it("generates pull workflow with schedule and sources block", () => {
     const pullConfig: CLIConfig = {
       pushSrcPath: "",
@@ -334,6 +354,12 @@ describe("parsePullSource", () => {
       dstPath: "docs/app/",
       srcBranch: "main",
     });
+  });
+
+  it("round-trips whole-repo srcPath via / → normalizePath('') ", () => {
+    const parsed = parsePullSource("org/wiki:/:raw/wiki/@main");
+    expect(normalizePath(parsed.srcPath)).toBe("");
+    expect(normalizePath(parsed.dstPath)).toBe("raw/wiki/");
   });
 });
 

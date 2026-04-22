@@ -126,7 +126,10 @@ export async function runPush(opts: PushOptions): Promise<void> {
       const dstFull = join(targetDir, dstAbs) + "/";
       await mkdir(dstFull, { recursive: true });
 
-      const srcFull = join(opts.sourceRepoRoot, opts.srcPath);
+      // Trailing slash is load-bearing: `rsync src/ dst/` copies src's
+      // contents into dst; `rsync src dst/` copies src itself as a subdir.
+      // join() strips trailing slashes, so re-add one here.
+      const srcFull = join(opts.sourceRepoRoot, opts.srcPath) + "/";
       await rsyncInto(srcFull, dstFull, false);
 
       if (opts.dedup) {
@@ -176,7 +179,8 @@ export async function runPull(opts: PullOptions): Promise<void> {
       const dstFull = join(opts.hubRoot, source.dstPath);
       await mkdir(dstFull, { recursive: true });
 
-      const srcFull = join(srcDir, source.srcPath);
+      // Trailing slash required for "copy contents of". See runPush above.
+      const srcFull = join(srcDir, source.srcPath) + "/";
       await rsyncInto(srcFull, dstFull, true);
       await rm(srcDir, { recursive: true, force: true });
 

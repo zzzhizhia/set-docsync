@@ -40,10 +40,11 @@ function serializeTargets(config: CLIConfig): string {
 function serializeSources(config: CLIConfig): string {
   return config.pullSources
     .map((s) => {
-      const parts = [`${s.srcOwner}/${s.srcRepoName}`];
-      // Use explicit src:dst shape so a non-default dst survives rsync.
-      parts.push(`:${s.srcPath}:${s.dstPath}`);
-      return `${parts.join("")}@${s.srcBranch}`;
+      // Emit "/" for an empty srcPath (whole-repo sync). An empty segment
+      // in owner/repo::dst@branch would be parsed as the default "docs/",
+      // silently narrowing the sync to a subdirectory that may not exist.
+      const src = s.srcPath || "/";
+      return `${s.srcOwner}/${s.srcRepoName}:${src}:${s.dstPath}@${s.srcBranch}`;
     })
     .join("\n");
 }
