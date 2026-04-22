@@ -78,12 +78,20 @@ async function collectFreshConfig(ctx: GitContext): Promise<CLIConfig> {
     pullSources = await collectPullSources(ctx);
   }
 
+  let clean = true;
+  if (mode === "push" || mode === "both") {
+    clean = await confirm({
+      message: "Clean each target's destination directory before sync?",
+      default: true,
+    });
+  }
+
   const dedup = await confirm({
     message: "Deduplicate identical files via symlinks?",
     default: false,
   });
 
-  return { pushSrcPath, pushSrcBranch, pushTargets, pullBranch, pullSources, dedup };
+  return { pushSrcPath, pushSrcBranch, pushTargets, pullBranch, pullSources, dedup, clean };
 }
 
 async function collectPushTargets(ctx: GitContext): Promise<PushTarget[]> {
@@ -105,12 +113,8 @@ async function collectPushTargets(ctx: GitContext): Promise<PushTarget[]> {
       default: "/",
     });
     const dstBranch = await input({ message: "Target branch", default: "main" });
-    const clean = await confirm({
-      message: "Clean target directory before sync?",
-      default: true,
-    });
 
-    targets.push({ dstOwner, dstRepoName, dstPath, dstBranch, clean });
+    targets.push({ dstOwner, dstRepoName, dstPath, dstBranch });
     if (!(await confirm({ message: "Add another push target?", default: false }))) break;
   } while (true);
   return targets;
@@ -183,9 +187,10 @@ export async function confirmGeneration(config: CLIConfig): Promise<boolean> {
     console.log(`  ${pc.bold("Push:")}`);
     console.log(`    Source path:   ${config.pushSrcPath}`);
     console.log(`    Source branch: ${config.pushSrcBranch}`);
+    console.log(`    Clean targets: ${config.clean}`);
     for (let i = 0; i < config.pushTargets.length; i++) {
       const t = config.pushTargets[i];
-      console.log(`    Target ${i + 1}: ${t.dstOwner}/${t.dstRepoName}:${t.dstPath} (${t.dstBranch}) clean=${t.clean}`);
+      console.log(`    Target ${i + 1}: ${t.dstOwner}/${t.dstRepoName}:${t.dstPath} (${t.dstBranch})`);
     }
   }
 

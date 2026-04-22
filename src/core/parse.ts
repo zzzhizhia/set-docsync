@@ -13,7 +13,7 @@ export function parseRemoteURL(url: string): { owner: string; repo: string } {
 }
 
 // owner/repo[:dst_path][@branch]
-export function parsePushTarget(arg: string, clean = true): PushTarget {
+export function parsePushTarget(arg: string): PushTarget {
   const [pathsPart, branch] = arg.split("@");
   const colonIdx = pathsPart.indexOf(":");
   const repo = colonIdx === -1 ? pathsPart : pathsPart.slice(0, colonIdx);
@@ -27,7 +27,6 @@ export function parsePushTarget(arg: string, clean = true): PushTarget {
     dstRepoName: repo.slice(slashIdx + 1),
     dstPath: dstPath || "/",
     dstBranch: branch || "main",
-    clean,
   };
 }
 

@@ -1,5 +1,7 @@
 node_modules/
-dist/
-# Action bundle must ship with the repo so `uses: ...@vN` resolves it.
-!dist/action/
-!dist/action/**
+# Ignore dist/ contents but keep dist/action/ tracked so `uses: ...@vN`
+# users can load the bundled Action.
+dist/*
+!dist/action
+dist/action/*
+!dist/action/*.cjs

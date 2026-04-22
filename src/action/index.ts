@@ -34,7 +34,7 @@ async function run(): Promise<void> {
 
   if (doPush) {
     const targets = rawTargets.map((t) => {
-      const parsed = parsePushTarget(t, clean);
+      const parsed = parsePushTarget(t);
       parsed.dstPath = normalizePath(parsed.dstPath);
       return parsed;
     });
@@ -44,6 +44,7 @@ async function run(): Promise<void> {
       targets,
       token,
       dedup,
+      clean,
       commitRef: ref.slice(0, 7),
     });
   }

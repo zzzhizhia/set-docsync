@@ -3,7 +3,6 @@ export interface PushTarget {
   dstRepoName: string;
   dstPath: string;
   dstBranch: string;
-  clean: boolean;
 }
 
 export interface PullSource {

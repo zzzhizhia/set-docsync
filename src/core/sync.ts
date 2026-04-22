@@ -106,6 +106,7 @@ export interface PushOptions {
   targets: PushTarget[];
   token: string;
   dedup: boolean;
+  clean: boolean;
   commitRef: string; // used in commit message
 }
 
@@ -119,7 +120,7 @@ export async function runPush(opts: PushOptions): Promise<void> {
       await cloneTarget(target, opts.token, targetDir);
 
       const dstAbs = target.dstPath.replace(/\/$/, "");
-      if (target.clean) {
+      if (opts.clean) {
         await cleanDstDir(targetDir, dstAbs);
       }
       const dstFull = join(targetDir, dstAbs) + "/";

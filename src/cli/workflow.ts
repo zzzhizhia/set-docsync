@@ -83,8 +83,18 @@ export function generateYaml(config: CLIConfig): string {
   lines.push("      - uses: actions/checkout@v6");
   lines.push("        with:");
   lines.push(`          token: \${{ secrets.PAT_DOCSYNC }}`);
-  if (hasPull) {
-    lines.push(`          ref: ${q(config.pullBranch || config.pushSrcBranch || "main")}`);
+  // Checkout ref selection:
+  //  - push-only: omit `ref` so checkout defaults to github.ref (the pushed
+  //    commit), which is what runPush needs to read.
+  //  - pull-only: always check out the hub's pullBranch.
+  //  - combined: on push events use the pushed ref (so docs reflect the
+  //    commit that triggered the run); otherwise fall back to pullBranch.
+  if (hasPush && hasPull) {
+    lines.push(
+      `          ref: \${{ github.event_name == 'push' && github.ref_name || '${config.pullBranch}' }}`,
+    );
+  } else if (hasPull) {
+    lines.push(`          ref: ${q(config.pullBranch)}`);
   }
   lines.push("");
   lines.push(`      - uses: ${ACTION_REF}`);
@@ -94,6 +104,10 @@ export function generateYaml(config: CLIConfig): string {
     lines.push(`          src-path: ${q(config.pushSrcPath)}`);
     lines.push(`          targets: |`);
     lines.push(indentBlock(serializeTargets(config), 12));
+    // Only emit `clean` when non-default (action.yml defaults to 'true').
+    if (!config.clean) {
+      lines.push(`          clean: "false"`);
+    }
   }
   if (hasPull) {
     lines.push(`          sources: |`);

@@ -19858,7 +19858,7 @@ function endGroup() {
 }
 
 // src/core/parse.ts
-function parsePushTarget(arg, clean = true) {
+function parsePushTarget(arg) {
   const [pathsPart, branch] = arg.split("@");
   const colonIdx = pathsPart.indexOf(":");
   const repo = colonIdx === -1 ? pathsPart : pathsPart.slice(0, colonIdx);
@@ -19871,8 +19871,7 @@ function parsePushTarget(arg, clean = true) {
     dstOwner: repo.slice(0, slashIdx),
     dstRepoName: repo.slice(slashIdx + 1),
     dstPath: dstPath || "/",
-    dstBranch: branch || "main",
-    clean
+    dstBranch: branch || "main"
   };
 }
 function parsePullSource(arg) {
@@ -20097,7 +20096,7 @@ async function runPush(opts) {
     try {
       await cloneTarget(target, opts.token, targetDir);
       const dstAbs = target.dstPath.replace(/\/$/, "");
-      if (target.clean) {
+      if (opts.clean) {
         await cleanDstDir(targetDir, dstAbs);
       }
       const dstFull = (0, import_node_path3.join)(targetDir, dstAbs) + "/";
@@ -20180,7 +20179,7 @@ async function run() {
   }
   if (doPush) {
     const targets = rawTargets.map((t) => {
-      const parsed = parsePushTarget(t, clean);
+      const parsed = parsePushTarget(t);
       parsed.dstPath = normalizePath(parsed.dstPath);
       return parsed;
     });
@@ -20190,6 +20189,7 @@ async function run() {
       targets,
       token,
       dedup,
+      clean,
       commitRef: ref.slice(0, 7)
     });
   }

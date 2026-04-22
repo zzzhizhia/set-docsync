@@ -16,8 +16,9 @@ export interface CLIConfig {
   // Pull (sources exist → generated workflow triggers on schedule)
   pullBranch: string;
   pullSources: PullSource[];
-  // Single global dedup toggle (applies to both push and pull)
+  // Single global toggles (applied to every push target / pull source)
   dedup: boolean;
+  clean: boolean;
   // Runtime state written by the Action. The CLI preserves this field
   // across rewrites so reconfiguring doesn't re-trigger full pulls.
   sourceSHAs?: Record<string, string>;

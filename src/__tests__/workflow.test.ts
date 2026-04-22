@@ -50,11 +50,12 @@ describe("generateYaml", () => {
     pushSrcPath: "docs/",
     pushSrcBranch: "main",
     pushTargets: [
-      { dstOwner: "singularquest", dstRepoName: "wiki", dstPath: "docs/website/", dstBranch: "main", clean: true },
+      { dstOwner: "singularquest", dstRepoName: "wiki", dstPath: "docs/website/", dstBranch: "main" },
     ],
     pullBranch: "",
     pullSources: [],
     dedup: false,
+    clean: true,
   };
 
   it("generates push workflow with single uses: step", () => {
@@ -81,13 +82,28 @@ describe("generateYaml", () => {
     const multi: CLIConfig = {
       ...pushConfig,
       pushTargets: [
-        { dstOwner: "org1", dstRepoName: "wiki", dstPath: "docs/app/", dstBranch: "main", clean: true },
-        { dstOwner: "org2", dstRepoName: "docs", dstPath: "web/", dstBranch: "dev", clean: false },
+        { dstOwner: "org1", dstRepoName: "wiki", dstPath: "docs/app/", dstBranch: "main" },
+        { dstOwner: "org2", dstRepoName: "docs", dstPath: "web/", dstBranch: "dev" },
       ],
     };
     const yaml = generateYaml(multi);
     expect(yaml).toContain("org1/wiki:docs/app/@main");
     expect(yaml).toContain("org2/docs:web/@dev");
+  });
+
+  it("emits clean: 'false' when --no-clean was selected", () => {
+    const yaml = generateYaml({ ...pushConfig, clean: false });
+    expect(yaml).toContain('clean: "false"');
+  });
+
+  it("omits clean: input when clean is the default (true)", () => {
+    const yaml = generateYaml(pushConfig);
+    expect(yaml).not.toContain("clean:");
+  });
+
+  it("omits ref in push-only workflow so checkout picks up the pushed commit", () => {
+    const yaml = generateYaml(pushConfig);
+    expect(yaml).not.toContain("ref:");
   });
 
   it("generates pull workflow with schedule and sources block", () => {
@@ -100,6 +116,7 @@ describe("generateYaml", () => {
         { srcOwner: "singularquest", srcRepoName: "website", srcPath: "docs/", dstPath: "docs/website/", srcBranch: "main" },
       ],
       dedup: false,
+      clean: true,
     };
     const yaml = generateYaml(pullConfig);
 
@@ -107,6 +124,7 @@ describe("generateYaml", () => {
     expect(yaml).toContain('cron: "0 0 * * *"');
     expect(yaml).toContain("sources: |");
     expect(yaml).toContain("singularquest/website:docs/:docs/website/@main");
+    expect(yaml).toContain('ref: "main"');
     expect(yaml).not.toContain("targets: |");
     expect(yaml).not.toContain("  push:");
   });
@@ -116,13 +134,14 @@ describe("generateYaml", () => {
       pushSrcPath: "docs/",
       pushSrcBranch: "main",
       pushTargets: [
-        { dstOwner: "org", dstRepoName: "wiki", dstPath: "docs/web/", dstBranch: "main", clean: true },
+        { dstOwner: "org", dstRepoName: "wiki", dstPath: "docs/web/", dstBranch: "main" },
       ],
-      pullBranch: "main",
+      pullBranch: "docs-hub",
       pullSources: [
         { srcOwner: "org", srcRepoName: "api", srcPath: "docs/", dstPath: "docs/api/", srcBranch: "main" },
       ],
       dedup: true,
+      clean: true,
     };
     const yaml = generateYaml(both);
 
@@ -135,6 +154,12 @@ describe("generateYaml", () => {
     expect(yaml).toContain('dedup: "true"');
     // One `sync` job, not two jobs with conditionals
     expect(yaml).not.toContain("if: github.event_name");
+    // Combined mode: checkout must follow the pushed ref on push events,
+    // else fall back to the hub branch. This prevents push from reading
+    // docs out of pullBranch when the two branches differ.
+    expect(yaml).toContain(
+      "ref: ${{ github.event_name == 'push' && github.ref_name || 'docs-hub' }}",
+    );
   });
 
   it("preserves ${{ }} expressions", () => {
@@ -158,11 +183,12 @@ describe("readExistingConfig", () => {
       pushSrcPath: "docs/",
       pushSrcBranch: "main",
       pushTargets: [
-        { dstOwner: "org", dstRepoName: "wiki", dstPath: "docs/web/", dstBranch: "main", clean: true },
+        { dstOwner: "org", dstRepoName: "wiki", dstPath: "docs/web/", dstBranch: "main" },
       ],
       pullBranch: "",
       pullSources: [],
       dedup: false,
+      clean: true,
     };
     writeFileSync(join(configDir, "docsync.json"), JSON.stringify(config));
     expect(readExistingConfig(testDir)).toEqual(config);
@@ -182,6 +208,7 @@ describe("readExistingConfig", () => {
         { srcOwner: "o", srcRepoName: "r", srcPath: "docs/", dstPath: "docs/r/", srcBranch: "main" },
       ],
       dedup: false,
+      clean: true,
       sourceSHAs: { "o/r@main": "deadbeef" },
     };
     writeFileSync(join(configDir, "docsync.json"), JSON.stringify(existing));
@@ -261,32 +288,29 @@ describe("dedupeDirs", () => {
 
 describe("parsePushTarget", () => {
   it("parses full format owner/repo:path@branch", () => {
-    expect(parsePushTarget("org/wiki:docs/web/@dev", true)).toEqual({
+    expect(parsePushTarget("org/wiki:docs/web/@dev")).toEqual({
       dstOwner: "org",
       dstRepoName: "wiki",
       dstPath: "docs/web/",
       dstBranch: "dev",
-      clean: true,
     });
   });
 
   it("parses minimal format owner/repo", () => {
-    expect(parsePushTarget("org/wiki", false)).toEqual({
+    expect(parsePushTarget("org/wiki")).toEqual({
       dstOwner: "org",
       dstRepoName: "wiki",
       dstPath: "/",
       dstBranch: "main",
-      clean: false,
     });
   });
 
   it("parses owner/repo@branch without path", () => {
-    expect(parsePushTarget("org/wiki@dev", true)).toEqual({
+    expect(parsePushTarget("org/wiki@dev")).toEqual({
       dstOwner: "org",
       dstRepoName: "wiki",
       dstPath: "/",
       dstBranch: "dev",
-      clean: true,
     });
   });
 });
@@ -321,13 +345,14 @@ describe("normalizeConfig", () => {
       pushSrcPath: "./docs",
       pushSrcBranch: "main",
       pushTargets: [
-        { dstOwner: "o", dstRepoName: "r", dstPath: "/out/", dstBranch: "main", clean: true },
+        { dstOwner: "o", dstRepoName: "r", dstPath: "/out/", dstBranch: "main" },
       ],
       pullBranch: "main",
       pullSources: [
         { srcOwner: "o", srcRepoName: "r", srcPath: "./src/", dstPath: "/dst", srcBranch: "main" },
       ],
       dedup: false,
+      clean: true,
     };
     const config = normalizeConfig(raw);
     expect(config.pushSrcPath).toBe("docs/");

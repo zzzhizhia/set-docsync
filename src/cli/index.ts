@@ -99,10 +99,11 @@ function parseCliArgs(): CLIConfig | null {
     return {
       pushSrcPath: (values.src as string) || "docs/",
       pushSrcBranch: (values.branch as string) || "main",
-      pushTargets: toArgs.map((t) => parsePushTarget(t, clean as boolean)),
+      pushTargets: toArgs.map((t) => parsePushTarget(t)),
       pullBranch: "",
       pullSources: [],
       dedup,
+      clean: clean as boolean,
     };
   }
 
@@ -120,6 +121,7 @@ function parseCliArgs(): CLIConfig | null {
       pullBranch: (values.branch as string) || "main",
       pullSources: fromArgs.map(parsePullSource),
       dedup,
+      clean: true, // irrelevant for pull-only; kept for CLIConfig uniformity
     };
   }
 

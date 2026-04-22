@@ -6,11 +6,11 @@
       "dstOwner": "singularquest",
       "dstRepoName": "wiki",
       "dstPath": "docs/website/",
-      "dstBranch": "main",
-      "clean": true
+      "dstBranch": "main"
     }
   ],
   "pullBranch": "",
   "pullSources": [],
-  "dedup": false
+  "dedup": false,
+  "clean": true
 }
