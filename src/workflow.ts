@@ -72,23 +72,42 @@ function generateTriggers(config: Config): string {
   return triggers.join("\n");
 }
 
+// Shell snippet: replace duplicate regular files with symlinks to the first
+// occurrence (by lexicographic path). Arg 1 is the directory to scan.
+// Idempotent: running twice yields the same result; broken symlinks from
+// previous runs are cleaned before re-scanning.
+function dedupSnippet(dirExpr: string): string {
+  return `DEDUP_DIR=${dirExpr}
+          if [ -d "$DEDUP_DIR" ]; then
+            find "$DEDUP_DIR" -xtype l -delete 2>/dev/null || true
+            find "$DEDUP_DIR" -type f ! -path '*/.git/*' -exec sha256sum {} + 2>/dev/null | \\
+              sort | \\
+              awk '{ path = substr($0, 67); if ($1 == prev) { print canon "\\t" path; next } prev = $1; canon = path }' | \\
+              while IFS=$'\\t' read -r canonical duplicate; do
+                [ -f "$canonical" ] && [ -f "$duplicate" ] || continue
+                rel=$(realpath --relative-to="$(dirname "$duplicate")" "$canonical")
+                rm -f "$duplicate"
+                ln -s "$rel" "$duplicate"
+                echo "deduped: $duplicate -> $rel"
+              done
+          fi`;
+}
+
 function generatePushJob(config: Config): string {
   const ifClause = config.mode === "both"
     ? "\n    if: github.event_name != 'schedule'"
     : "";
 
   const matrixEntries = config.pushTargets.map((t) => {
-    const dstPathAction = t.dstPath ? `/${t.dstPath}` : "/";
     return [
       `          - dst_owner: ${q(t.dstOwner)}`,
       `            dst_repo_name: ${q(t.dstRepoName)}`,
-      `            dst_path: ${q(dstPathAction)}`,
+      `            dst_path: ${q(t.dstPath)}`,
       `            dst_branch: ${q(t.dstBranch)}`,
       `            clean: ${t.clean}`,
+      `            dedup: ${t.dedup ?? false}`,
     ].join("\n");
   });
-
-  const srcPathAction = `/${config.pushSrcPath}.`;
 
   return `  push-docs:${ifClause}
     runs-on: ubuntu-latest
@@ -99,19 +118,45 @@ ${matrixEntries.join("\n")}
     steps:
       - name: Checkout source repo
         uses: actions/checkout@v6
-
-      - name: Push docs to target repo
-        uses: andstor/copycat-action@v3
         with:
-          personal_token: \${{ secrets.PAT_DOCSYNC }}
-          src_path: ${q(srcPathAction)}
-          dst_path: \${{ matrix.dst_path }}
-          dst_owner: \${{ matrix.dst_owner }}
-          dst_repo_name: \${{ matrix.dst_repo_name }}
-          dst_branch: \${{ matrix.dst_branch }}
-          src_branch: ${q(config.pushSrcBranch)}
-          clean: \${{ matrix.clean }}
-          commit_message: "docs: push from \${{ github.repository }} @ \${{ github.sha }}"`;
+          ref: ${q(config.pushSrcBranch)}
+          path: _source
+
+      - name: Checkout target \${{ matrix.dst_owner }}/\${{ matrix.dst_repo_name }}
+        uses: actions/checkout@v6
+        with:
+          repository: \${{ matrix.dst_owner }}/\${{ matrix.dst_repo_name }}
+          ref: \${{ matrix.dst_branch }}
+          token: \${{ secrets.PAT_DOCSYNC }}
+          path: _target
+
+      - name: Sync docs to target
+        run: |
+          DST="_target/\${{ matrix.dst_path }}"
+          DST="\${DST%/}"
+          if [ "\${{ matrix.clean }}" = "true" ] && [ -d "$DST" ]; then
+            find "$DST" -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
+          fi
+          mkdir -p "$DST"
+          rsync -av --exclude '.git' "_source/${config.pushSrcPath}" "$DST/"
+
+      - name: Deduplicate identical files
+        if: matrix.dedup
+        run: |
+          ${dedupSnippet('"_target/${{ matrix.dst_path }}"')}
+
+      - name: Commit and push to target
+        working-directory: _target
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to push"
+          else
+            git commit -m "docs: push from \${{ github.repository }} @ \${{ github.sha }}"
+            git push
+          fi`;
 }
 
 function generatePullJob(config: Config): string {
@@ -122,8 +167,26 @@ function generatePullJob(config: Config): string {
   const pullSteps = config.pullSources.map((s, i) => {
     const srcDir = `_src_${i}`;
     const sparseDir = s.srcPath.replace(/\/$/, "");
+    const shaKey = `${s.srcOwner}/${s.srcRepoName}@${s.srcBranch}`;
+
     return `
+      - name: Check ${s.srcOwner}/${s.srcRepoName}@${s.srcBranch} for changes
+        id: sha_${i}
+        env:
+          GH_TOKEN: \${{ secrets.PAT_DOCSYNC }}
+        run: |
+          CURRENT=$(gh api "repos/${s.srcOwner}/${s.srcRepoName}/commits/${s.srcBranch}" --jq .sha)
+          LAST=$(jq -r '.sourceSHAs[${q(shaKey)}] // ""' .github/docsync.json 2>/dev/null || echo "")
+          echo "sha=$CURRENT" >> "$GITHUB_OUTPUT"
+          if [ -n "$LAST" ] && [ "$CURRENT" = "$LAST" ]; then
+            echo "Skipping ${s.srcOwner}/${s.srcRepoName}@${s.srcBranch} (unchanged: $CURRENT)"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout ${s.srcOwner}/${s.srcRepoName}
+        if: steps.sha_${i}.outputs.changed == 'true'
         uses: actions/checkout@v6
         with:
           repository: ${q(`${s.srcOwner}/${s.srcRepoName}`)}
@@ -133,11 +196,44 @@ function generatePullJob(config: Config): string {
           sparse-checkout: ${q(sparseDir)}
 
       - name: Sync ${s.srcOwner}/${s.srcRepoName}
+        if: steps.sha_${i}.outputs.changed == 'true'
         run: |
           mkdir -p ${q(s.dstPath)}
           rsync -av --delete --exclude '.git' ${srcDir}/${s.srcPath} ${s.dstPath}
-          rm -rf ${srcDir}`;
+          rm -rf ${srcDir}
+
+      - name: Update SHA state for ${s.srcOwner}/${s.srcRepoName}
+        if: steps.sha_${i}.outputs.changed == 'true'
+        run: |
+          mkdir -p .github
+          [ -f .github/docsync.json ] || echo '{}' > .github/docsync.json
+          jq --arg k ${q(shaKey)} --arg v "\${{ steps.sha_${i}.outputs.sha }}" \\
+            '.sourceSHAs[$k] = $v' .github/docsync.json > .github/docsync.json.tmp
+          mv .github/docsync.json.tmp .github/docsync.json`;
   });
+
+  const dedupPaths = config.pullSources.map((s) => q(s.dstPath.replace(/\/$/, "") || ".")).join(" ");
+  const dedupStep = config.pullDedup
+    ? `
+
+      - name: Deduplicate identical files across sources
+        run: |
+          for DEDUP_DIR in ${dedupPaths}; do
+            if [ -d "$DEDUP_DIR" ]; then
+              find "$DEDUP_DIR" -xtype l -delete 2>/dev/null || true
+            fi
+          done
+          find ${dedupPaths} -type f ! -path '*/.git/*' -exec sha256sum {} + 2>/dev/null | \\
+            sort | \\
+            awk '{ path = substr($0, 67); if ($1 == prev) { print canon "\\t" path; next } prev = $1; canon = path }' | \\
+            while IFS=$'\\t' read -r canonical duplicate; do
+              [ -f "$canonical" ] && [ -f "$duplicate" ] || continue
+              rel=$(realpath --relative-to="$(dirname "$duplicate")" "$canonical")
+              rm -f "$duplicate"
+              ln -s "$rel" "$duplicate"
+              echo "deduped: $duplicate -> $rel"
+            done`
+    : "";
 
   return `
   pull-docs:${ifClause}
@@ -148,7 +244,7 @@ function generatePullJob(config: Config): string {
         with:
           token: \${{ secrets.PAT_DOCSYNC }}
           ref: ${q(config.pullBranch)}
-${pullSteps.join("\n")}
+${pullSteps.join("\n")}${dedupStep}
 
       - name: Commit and push
         run: |
@@ -189,9 +285,16 @@ export async function writeWorkflow(cwd: string, yaml: string, config: Config, i
     }
   }
 
+  // Preserve runtime state (source SHAs updated by the workflow) so
+  // reconfiguring via the CLI doesn't blow it away.
+  const existing = readExistingConfig(cwd);
+  const configToWrite: Config = existing?.sourceSHAs
+    ? { ...config, sourceSHAs: existing.sourceSHAs }
+    : config;
+
   mkdirSync(dir, { recursive: true });
   writeFileSync(filePath, yaml, "utf-8");
-  writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
+  writeFileSync(configPath, JSON.stringify(configToWrite, null, 2) + "\n", "utf-8");
   console.log(`\n✅ Written to ${filePath}`);
   return true;
 }

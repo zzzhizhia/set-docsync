@@ -15,22 +15,62 @@ jobs:
         include:
           - dst_owner: "singularquest"
             dst_repo_name: "wiki"
-            dst_path: "/docs/website/"
+            dst_path: "docs/website/"
             dst_branch: "main"
             clean: true
+            dedup: false
     steps:
       - name: Checkout source repo
         uses: actions/checkout@v6
-
-      - name: Push docs to target repo
-        uses: andstor/copycat-action@v3
         with:
-          personal_token: ${{ secrets.GITHUB_PAT_DOCSYNC }}
-          src_path: "/docs/."
-          dst_path: ${{ matrix.dst_path }}
-          dst_owner: ${{ matrix.dst_owner }}
-          dst_repo_name: ${{ matrix.dst_repo_name }}
-          dst_branch: ${{ matrix.dst_branch }}
-          src_branch: "main"
-          clean: ${{ matrix.clean }}
-          commit_message: "docs: push from ${{ github.repository }} @ ${{ github.sha }}"
+          ref: "main"
+          path: _source
+
+      - name: Checkout target ${{ matrix.dst_owner }}/${{ matrix.dst_repo_name }}
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ matrix.dst_owner }}/${{ matrix.dst_repo_name }}
+          ref: ${{ matrix.dst_branch }}
+          token: ${{ secrets.PAT_DOCSYNC }}
+          path: _target
+
+      - name: Sync docs to target
+        run: |
+          DST="_target/${{ matrix.dst_path }}"
+          DST="${DST%/}"
+          if [ "${{ matrix.clean }}" = "true" ] && [ -d "$DST" ]; then
+            find "$DST" -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
+          fi
+          mkdir -p "$DST"
+          rsync -av --exclude '.git' "_source/docs/" "$DST/"
+
+      - name: Deduplicate identical files
+        if: matrix.dedup
+        run: |
+          DEDUP_DIR="_target/${{ matrix.dst_path }}"
+          if [ -d "$DEDUP_DIR" ]; then
+            find "$DEDUP_DIR" -xtype l -delete 2>/dev/null || true
+            find "$DEDUP_DIR" -type f ! -path '*/.git/*' -exec sha256sum {} + 2>/dev/null | \
+              sort | \
+              awk '{ path = substr($0, 67); if ($1 == prev) { print canon "\t" path; next } prev = $1; canon = path }' | \
+              while IFS=$'\t' read -r canonical duplicate; do
+                [ -f "$canonical" ] && [ -f "$duplicate" ] || continue
+                rel=$(realpath --relative-to="$(dirname "$duplicate")" "$canonical")
+                rm -f "$duplicate"
+                ln -s "$rel" "$duplicate"
+                echo "deduped: $duplicate -> $rel"
+              done
+          fi
+
+      - name: Commit and push to target
+        working-directory: _target
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to push"
+          else
+            git commit -m "docs: push from ${{ github.repository }} @ ${{ github.sha }}"
+            git push
+          fi

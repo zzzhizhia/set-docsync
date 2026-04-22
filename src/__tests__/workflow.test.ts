@@ -133,9 +133,12 @@ describe("generateYaml (push)", () => {
     expect(yaml).toContain("matrix:");
     expect(yaml).toContain('dst_owner: "singularquest"');
     expect(yaml).toContain('dst_repo_name: "wiki"');
-    expect(yaml).toContain('src_path: "/docs/."');
-    expect(yaml).toContain("copycat-action@v3");
+    expect(yaml).toContain('dst_path: "docs/website/"');
+    // Push now uses checkout + rsync directly, not copycat-action.
+    expect(yaml).not.toContain("copycat-action");
+    expect(yaml).toContain("actions/checkout@v6");
     expect(yaml).toContain("PAT_DOCSYNC");
+    expect(yaml).toContain("rsync -av --exclude '.git'");
     // No schedule trigger for push-only
     expect(yaml).not.toContain("schedule:");
     // No pull job
@@ -157,6 +160,24 @@ describe("generateYaml (push)", () => {
     expect(yaml).toContain('dst_owner: "org2"');
     expect(yaml).toContain('dst_repo_name: "docs"');
     expect(yaml).toContain('dst_branch: "dev"');
+  });
+
+  it("includes dedup flag in matrix (default false)", () => {
+    const yaml = generateYaml(pushConfig);
+    expect(yaml).toContain("dedup: false");
+    expect(yaml).toContain("if: matrix.dedup");
+  });
+
+  it("sets dedup: true when enabled on a target", () => {
+    const withDedup: Config = {
+      ...pushConfig,
+      pushTargets: [
+        { dstOwner: "org", dstRepoName: "wiki", dstPath: "docs/", dstBranch: "main", clean: true, dedup: true },
+      ],
+    };
+    const yaml = generateYaml(withDedup);
+    expect(yaml).toContain("dedup: true");
+    expect(yaml).toContain("sha256sum");
   });
 
   it("preserves ${{ }} expressions", () => {
@@ -199,6 +220,28 @@ describe("generateYaml (pull)", () => {
     expect(yaml).not.toContain("  push:");
     // No push job
     expect(yaml).not.toContain("push-docs:");
+  });
+
+  it("generates SHA-based skip check for each source", () => {
+    const yaml = generateYaml(pullConfig);
+    expect(yaml).toContain("id: sha_0");
+    expect(yaml).toContain("gh api");
+    expect(yaml).toContain('repos/singularquest/website/commits/main');
+    expect(yaml).toContain(".sourceSHAs");
+    expect(yaml).toContain("if: steps.sha_0.outputs.changed == 'true'");
+    expect(yaml).toContain("Update SHA state");
+  });
+
+  it("omits dedup step by default", () => {
+    const yaml = generateYaml(pullConfig);
+    expect(yaml).not.toContain("Deduplicate identical files");
+  });
+
+  it("emits cross-source dedup step when pullDedup is true", () => {
+    const yaml = generateYaml({ ...pullConfig, pullDedup: true });
+    expect(yaml).toContain("Deduplicate identical files across sources");
+    expect(yaml).toContain("sha256sum");
+    expect(yaml).toContain("ln -s");
   });
 
   it("supports multiple pull sources", () => {
@@ -319,6 +362,43 @@ describe("readExistingConfig", () => {
 
     rmSync(testDir, { recursive: true, force: true });
   });
+
+  it("preserves state field across writeWorkflow rewrites", async () => {
+    const { writeWorkflow } = await import("../workflow.js");
+    const dir = join(tmpdir(), "docsync-state-test-" + Date.now());
+    const configDir = join(dir, ".github");
+    mkdirSync(configDir, { recursive: true });
+
+    const existing: Config = {
+      mode: "pull",
+      pushSrcPath: "",
+      pushSrcBranch: "",
+      pushTargets: [],
+      pullBranch: "main",
+      pullSources: [
+        { srcOwner: "o", srcRepoName: "r", srcPath: "docs/", dstPath: "docs/r/", srcBranch: "main" },
+      ],
+      sourceSHAs: { "o/r@main": "deadbeef" },
+    };
+    writeFileSync(join(configDir, "docsync.json"), JSON.stringify(existing));
+
+    const fresh: Config = {
+      mode: "pull",
+      pushSrcPath: "",
+      pushSrcBranch: "",
+      pushTargets: [],
+      pullBranch: "main",
+      pullSources: [
+        { srcOwner: "o", srcRepoName: "r", srcPath: "docs/", dstPath: "docs/r/", srcBranch: "main" },
+      ],
+    };
+    await writeWorkflow(dir, "dummy yaml", fresh, false);
+
+    const reloaded = readExistingConfig(dir);
+    expect(reloaded?.sourceSHAs?.["o/r@main"]).toBe("deadbeef");
+
+    rmSync(dir, { recursive: true, force: true });
+  });
 });
 
 // ── CLI arg parsers ──
@@ -331,6 +411,7 @@ describe("parsePushTarget", () => {
       dstPath: "docs/web/",
       dstBranch: "dev",
       clean: true,
+      dedup: false,
     });
   });
 
@@ -341,6 +422,7 @@ describe("parsePushTarget", () => {
       dstPath: "/",
       dstBranch: "main",
       clean: false,
+      dedup: false,
     });
   });
 
@@ -351,6 +433,7 @@ describe("parsePushTarget", () => {
       dstPath: "docs/",
       dstBranch: "main",
       clean: true,
+      dedup: false,
     });
   });
 
@@ -361,6 +444,18 @@ describe("parsePushTarget", () => {
       dstPath: "/",
       dstBranch: "dev",
       clean: true,
+      dedup: false,
+    });
+  });
+
+  it("propagates dedup flag", () => {
+    expect(parsePushTarget("org/wiki", true, true)).toEqual({
+      dstOwner: "org",
+      dstRepoName: "wiki",
+      dstPath: "/",
+      dstBranch: "main",
+      clean: true,
+      dedup: true,
     });
   });
 });

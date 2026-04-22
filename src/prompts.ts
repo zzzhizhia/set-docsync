@@ -88,6 +88,7 @@ async function collectFreshConfig(ctx: GitContext): Promise<Config> {
     pushTargets = await collectPushTargets(ctx);
   }
 
+  let pullDedup = false;
   if (mode === "pull" || mode === "both") {
     console.log(pc.bold("\n── Pull configuration ──\n"));
 
@@ -97,9 +98,14 @@ async function collectFreshConfig(ctx: GitContext): Promise<Config> {
     });
 
     pullSources = await collectPullSources(ctx);
+
+    pullDedup = await confirm({
+      message: "Deduplicate identical files across sources via symlinks?",
+      default: false,
+    });
   }
 
-  return { mode, pushSrcPath, pushSrcBranch, pushTargets, pullBranch, pullSources };
+  return { mode, pushSrcPath, pushSrcBranch, pushTargets, pullBranch, pullSources, pullDedup };
 }
 
 async function collectPushTargets(ctx: GitContext): Promise<PushTarget[]> {
@@ -136,7 +142,12 @@ async function collectPushTargets(ctx: GitContext): Promise<PushTarget[]> {
       default: true,
     });
 
-    targets.push({ dstOwner, dstRepoName, dstPath, dstBranch, clean });
+    const dedup = await confirm({
+      message: "Deduplicate identical files via symlinks?",
+      default: false,
+    });
+
+    targets.push({ dstOwner, dstRepoName, dstPath, dstBranch, clean, dedup });
 
     const addMore = await confirm({
       message: "Add another push target?",
@@ -235,7 +246,9 @@ export async function confirmGeneration(config: Config): Promise<boolean> {
     console.log(`    Source branch: ${config.pushSrcBranch}`);
     for (let i = 0; i < config.pushTargets.length; i++) {
       const t = config.pushTargets[i];
-      console.log(`    Target ${i + 1}: ${t.dstOwner}/${t.dstRepoName}:${t.dstPath} (${t.dstBranch}) clean=${t.clean}`);
+      const flags = [`clean=${t.clean}`];
+      if (t.dedup) flags.push("dedup");
+      console.log(`    Target ${i + 1}: ${t.dstOwner}/${t.dstRepoName}:${t.dstPath} (${t.dstBranch}) ${flags.join(" ")}`);
     }
   }
 
@@ -243,6 +256,7 @@ export async function confirmGeneration(config: Config): Promise<boolean> {
     console.log();
     console.log(`  ${pc.bold("Pull:")}`);
     console.log(`    Commit branch: ${config.pullBranch}`);
+    if (config.pullDedup) console.log(`    Dedup:         enabled (cross-source)`);
     for (let i = 0; i < config.pullSources.length; i++) {
       const s = config.pullSources[i];
       console.log(`    Source ${i + 1}: ${s.srcOwner}/${s.srcRepoName}:${s.srcPath} → ${s.dstPath} (${s.srcBranch})`);

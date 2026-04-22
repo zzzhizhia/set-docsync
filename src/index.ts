@@ -22,6 +22,7 @@ export interface PushTarget {
   dstPath: string;
   dstBranch: string;
   clean: boolean;
+  dedup?: boolean;
 }
 
 export interface PullSource {
@@ -41,6 +42,10 @@ export interface Config {
   // Pull
   pullBranch: string;
   pullSources: PullSource[];
+  pullDedup?: boolean;
+  // Last synced commit SHA per "owner/repo@branch" — updated by the pull
+  // workflow, preserved across CLI rewrites.
+  sourceSHAs?: Record<string, string>;
 }
 
 export function parseRemoteURL(url: string): { owner: string; repo: string } {
@@ -106,10 +111,11 @@ Options:
   --from <source>     Pull source — owner/repo[:src_path[:dst_path]][@branch]  (repeatable)
   --clean             Clean target directory before push (default: true)
   --no-clean          Don't clean target directory before push
+  --dedup             Replace identical files with symlinks to save space
   -h, --help          Show this help`;
 
 // --to owner/repo:dst_path@branch
-export function parsePushTarget(arg: string, clean: boolean): PushTarget {
+export function parsePushTarget(arg: string, clean: boolean, dedup = false): PushTarget {
   const [pathsPart, branch] = arg.split("@");
   const colonIdx = pathsPart.indexOf(":");
   const repo = colonIdx === -1 ? pathsPart : pathsPart.slice(0, colonIdx);
@@ -125,6 +131,7 @@ export function parsePushTarget(arg: string, clean: boolean): PushTarget {
     dstPath: dstPath || "/",
     dstBranch: branch || "main",
     clean,
+    dedup,
   };
 }
 
@@ -159,6 +166,7 @@ function parseCliArgs(): Config | null {
       from: { type: "string", multiple: true },
       clean: { type: "boolean" },
       "no-clean": { type: "boolean" },
+      dedup: { type: "boolean" },
       help: { type: "boolean", short: "h" },
     },
   });
@@ -172,6 +180,7 @@ function parseCliArgs(): Config | null {
   if (!sub) return null; // interactive mode
 
   const clean = values["no-clean"] ? false : (values.clean ?? true);
+  const dedup = (values.dedup as boolean | undefined) ?? false;
 
   if (sub === "push") {
     const toArgs = values.to as string[] | undefined;
@@ -184,7 +193,7 @@ function parseCliArgs(): Config | null {
       mode: "push",
       pushSrcPath: (values.src as string) || "docs/",
       pushSrcBranch: (values.branch as string) || "main",
-      pushTargets: toArgs.map((t) => parsePushTarget(t, clean as boolean)),
+      pushTargets: toArgs.map((t) => parsePushTarget(t, clean as boolean, dedup)),
       pullBranch: "",
       pullSources: [],
     };
@@ -204,6 +213,7 @@ function parseCliArgs(): Config | null {
       pushTargets: [],
       pullBranch: (values.branch as string) || "main",
       pullSources: fromArgs.map(parsePullSource),
+      pullDedup: dedup,
     };
   }
 

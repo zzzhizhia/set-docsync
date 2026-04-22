@@ -34,8 +34,14 @@ Options:
   --from <source>     Pull source — owner/repo[:src_path[:dst_path]][@branch]  (repeatable)
   --clean             Clean target directory before push (default: true)
   --no-clean          Don't clean target directory
+  --dedup             Replace identical files with symlinks to save space
   -h, --help          Show help
 ```
+
+### Options cheatsheet
+
+- **`--dedup`**: After sync, scans the target directory and replaces byte-identical files with relative symlinks pointing to the first occurrence (lex-sorted). Useful for hub repos that aggregate many wikis/docs with common files (licenses, templates, shared images). Idempotent across runs. Requires Linux/macOS — the generated workflow runs on `ubuntu-latest`, so Windows runners are not supported.
+- **Pull incremental**: The generated pull workflow checks each source's HEAD SHA against the last synced SHA (stored in `.github/docsync.json` under `sourceSHAs`). Unchanged sources skip clone/rsync entirely. State is preserved across CLI rewrites of the config.
 
 ## Sync Modes
 
@@ -101,21 +107,33 @@ jobs:
         include:
           - dst_owner: "myorg"
             dst_repo_name: "wiki"
-            dst_path: "/docs/website/"
+            dst_path: "docs/website/"
             dst_branch: "main"
             clean: true
+            dedup: false
     steps:
-      - uses: actions/checkout@v4
-      - uses: andstor/copycat-action@v3
+      - uses: actions/checkout@v6
+        with: { ref: "main", path: _source }
+      - uses: actions/checkout@v6
         with:
-          personal_token: ${{ secrets.PAT_DOCSYNC }}
-          src_path: "/docs/."
-          dst_path: ${{ matrix.dst_path }}
-          dst_owner: ${{ matrix.dst_owner }}
-          dst_repo_name: ${{ matrix.dst_repo_name }}
-          dst_branch: ${{ matrix.dst_branch }}
-          src_branch: "main"
-          clean: ${{ matrix.clean }}
+          repository: ${{ matrix.dst_owner }}/${{ matrix.dst_repo_name }}
+          ref: ${{ matrix.dst_branch }}
+          token: ${{ secrets.PAT_DOCSYNC }}
+          path: _target
+      - run: |
+          DST="_target/${{ matrix.dst_path }}"
+          if [ "${{ matrix.clean }}" = "true" ] && [ -d "$DST" ]; then
+            find "$DST" -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
+          fi
+          mkdir -p "$DST"
+          rsync -av --exclude '.git' _source/docs/ "$DST/"
+      # Optional: dedup step if matrix.dedup is true
+      - working-directory: _target
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet || { git commit -m "docs: push from ${{ github.repository }}"; git push; }
 ```
 
 ### Pull (multi-source, sequential)
@@ -132,9 +150,20 @@ jobs:
   pull-docs:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+        with: { token: "${{ secrets.PAT_DOCSYNC }}", ref: "main" }
 
-      - uses: actions/checkout@v4
+      # Per source: SHA check → skip if unchanged
+      - id: sha_0
+        env: { GH_TOKEN: "${{ secrets.PAT_DOCSYNC }}" }
+        run: |
+          CURRENT=$(gh api "repos/myorg/website/commits/main" --jq .sha)
+          LAST=$(jq -r '.sourceSHAs["myorg/website@main"] // ""' .github/docsync.json 2>/dev/null || echo "")
+          echo "sha=$CURRENT" >> "$GITHUB_OUTPUT"
+          [ "$CURRENT" = "$LAST" ] && echo "changed=false" >> "$GITHUB_OUTPUT" || echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - if: steps.sha_0.outputs.changed == 'true'
+        uses: actions/checkout@v6
         with:
           repository: "myorg/website"
           ref: "main"
@@ -142,21 +171,20 @@ jobs:
           path: _src_0
           sparse-checkout: "docs"
 
-      - run: |
+      - if: steps.sha_0.outputs.changed == 'true'
+        run: |
           mkdir -p docs/website/
-          rsync -av --delete _src_0/docs/ docs/website/
+          rsync -av --delete --exclude '.git' _src_0/docs/ docs/website/
           rm -rf _src_0
+
+      # Update stored SHA in .github/docsync.json under .sourceSHAs
+      # Optional: cross-source dedup step if pullDedup is true
 
       - run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A
-          if git diff --cached --quiet; then
-            echo "No changes to sync"
-          else
-            git commit -m "docs: pull from source repos"
-            git push
-          fi
+          git diff --cached --quiet || { git commit -m "docs: pull from source repos"; git push; }
 ```
 
 ### Both (combined, conditional jobs)
