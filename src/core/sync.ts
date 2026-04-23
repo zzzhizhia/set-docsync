@@ -163,6 +163,7 @@ export async function runPull(opts: PullOptions): Promise<void> {
 
   const state: State = await readState(opts.statePath);
   const shas: Record<string, string> = { ...(state.sourceSHAs ?? {}) };
+  let syncedAny = false;
 
   for (const [i, source] of opts.sources.entries()) {
     const key = shaKey(source.srcOwner, source.srcRepoName, source.srcBranch);
@@ -187,6 +188,7 @@ export async function runPull(opts: PullOptions): Promise<void> {
       await rm(srcDir, { recursive: true, force: true });
 
       shas[key] = current;
+      syncedAny = true;
     } finally {
       core.endGroup();
     }
@@ -195,10 +197,18 @@ export async function runPull(opts: PullOptions): Promise<void> {
   state.sourceSHAs = shas;
   await writeState(opts.statePath, state);
 
-  if (opts.dedup) {
+  // Skip dedup when every source was unchanged: no rsync ran, no file
+  // moved, so there's nothing new to hash. Dedup is idempotent, so the
+  // only cost of running it here is a pointless walk+sha256 of the hub.
+  // Tradeoff: if the user toggles dedup on *after* a no-change run, the
+  // new symlinks only materialize on the next source change. Acceptable
+  // because dedup is a background optimization, not a correctness gate.
+  if (opts.dedup && syncedAny) {
     const dirs = opts.sources.map((s) => join(opts.hubRoot, s.dstPath).replace(/\/$/, ""));
     const replaced = await dedupeDirs(dirs);
     if (replaced > 0) core.info(`Deduped ${replaced} files across sources`);
+  } else if (opts.dedup) {
+    core.info("No sources changed; skipping dedup");
   }
 
   const stamp = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");

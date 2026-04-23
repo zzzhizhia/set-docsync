@@ -20116,6 +20116,7 @@ async function runPull(opts) {
   if (opts.sources.length === 0) return;
   const state = await readState(opts.statePath);
   const shas = { ...state.sourceSHAs ?? {} };
+  let syncedAny = false;
   for (const [i, source] of opts.sources.entries()) {
     const key = shaKey(source.srcOwner, source.srcRepoName, source.srcBranch);
     startGroup(`Pull \u2190 ${source.srcOwner}/${source.srcRepoName} (${source.srcBranch})`);
@@ -20134,16 +20135,19 @@ async function runPull(opts) {
       await rsyncInto(srcFull, dstFull, true);
       await (0, import_promises3.rm)(srcDir, { recursive: true, force: true });
       shas[key] = current;
+      syncedAny = true;
     } finally {
       endGroup();
     }
   }
   state.sourceSHAs = shas;
   await writeState(opts.statePath, state);
-  if (opts.dedup) {
+  if (opts.dedup && syncedAny) {
     const dirs = opts.sources.map((s) => (0, import_node_path3.join)(opts.hubRoot, s.dstPath).replace(/\/$/, ""));
     const replaced = await dedupeDirs(dirs);
     if (replaced > 0) info(`Deduped ${replaced} files across sources`);
+  } else if (opts.dedup) {
+    info("No sources changed; skipping dedup");
   }
   const stamp = (/* @__PURE__ */ new Date()).toISOString().replace(/\.\d{3}Z$/, "Z");
   await commitAndPush(opts.hubRoot, `docs: pull from source repos @ ${stamp}`);
