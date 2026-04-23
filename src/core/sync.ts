@@ -68,8 +68,10 @@ async function cloneSourceSparse(
 
 async function cleanDstDir(targetRoot: string, dstPath: string): Promise<void> {
   const dst = join(targetRoot, dstPath);
-  // Remove contents of dst but preserve the .git dir at the repo root.
-  // `find -mindepth 1 ... ! -name .git -exec rm -rf` on the shell, expressed here via rm:
+  // Wipe dst's contents but keep `.git`: if dstPath is the repo root, a plain
+  // `rm -rf "$dst"` would delete .git and break the subsequent git commit/push.
+  // The exclusion is also a no-op (safe) for subdir dstPaths where .git lives
+  // at the target repo root rather than inside dst.
   await exec("bash", [
     "-c",
     `if [ -d "${dst}" ]; then find "${dst}" -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +; fi`,

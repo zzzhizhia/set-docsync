@@ -16,7 +16,9 @@ export interface CLIConfig {
   // Pull (sources exist → generated workflow triggers on schedule)
   pullBranch: string;
   pullSources: PullSource[];
-  // Single global toggles (applied to every push target / pull source)
+  // Single global toggles applied uniformly to every push target / pull
+  // source. v1 had per-target flags; v2 collapsed them to match the Action's
+  // input shape (one `dedup:` / `clean:` input, not N of them).
   dedup: boolean;
   clean: boolean;
   // Runtime state written by the Action. The CLI preserves this field

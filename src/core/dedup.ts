@@ -83,6 +83,9 @@ export async function dedupeDirs(dirs: string[]): Promise<number> {
   let replaced = 0;
   for (const [, paths] of hashToPaths) {
     if (paths.length <= 1) continue;
+    // Sort lexicographically so canonical selection is stable across runs:
+    // otherwise re-runs could pick a different canonical and flip symlink
+    // directions, filling git history with meaningless diff noise.
     paths.sort();
     const canonical = paths[0];
     for (let i = 1; i < paths.length; i++) {
