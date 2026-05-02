@@ -113,6 +113,9 @@ export function generateYaml(config: CLIConfig): string {
   if (hasPull) {
     lines.push(`          sources: |`);
     lines.push(indentBlock(serializeSources(config), 12));
+    if (config.pullMode === "submodule") {
+      lines.push(`          mode: "submodule"`);
+    }
   }
   if (config.dedup) {
     lines.push(`          dedup: "true"`);

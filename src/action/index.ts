@@ -2,6 +2,7 @@ import * as core from "@actions/core";
 import { parsePullSource, parsePushTarget } from "../core/parse.js";
 import { normalizePath } from "../core/paths.js";
 import { runPull, runPush } from "../core/sync.js";
+import type { SyncMode } from "../core/types.js";
 
 async function run(): Promise<void> {
   const token = core.getInput("token", { required: true });
@@ -11,6 +12,11 @@ async function run(): Promise<void> {
   const dedup = core.getBooleanInput("dedup");
   const statePath = core.getInput("state-path") || ".github/docsync.json";
   const clean = core.getBooleanInput("clean");
+  const rawMode = core.getInput("mode") || "copy";
+  if (rawMode !== "copy" && rawMode !== "submodule") {
+    throw new Error(`Invalid mode "${rawMode}". Expected "copy" or "submodule".`);
+  }
+  const mode: SyncMode = rawMode;
 
   const event = process.env.GITHUB_EVENT_NAME ?? "";
   const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
@@ -62,6 +68,7 @@ async function run(): Promise<void> {
       token,
       dedup,
       statePath,
+      mode,
     });
   }
 }

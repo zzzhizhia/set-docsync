@@ -51,7 +51,7 @@ Push mode:
   set-docsync push --src <path> --to <owner/repo:dst_path@branch> [--no-clean]
 
 Pull mode:
-  set-docsync pull --from <owner/repo:src_path:dst_path@branch> [--branch <branch>]
+  set-docsync pull --from <owner/repo:src_path:dst_path@branch> [--branch <branch>] [--submodule]
 
 Options:
   --src <path>        Source docs path (default: docs/)
@@ -59,6 +59,7 @@ Options:
   --to <target>       Push target — owner/repo[:dst_path][@branch]  (repeatable)
   --from <source>     Pull source — owner/repo[:src_path[:dst_path]][@branch]  (repeatable)
   --no-clean          Don't clean target directory before push
+  --submodule         Use git submodule instead of copy (pull only)
   --dedup             Replace identical files with symlinks
   -h, --help          Show this help`;
 
@@ -73,6 +74,7 @@ function parseCliArgs(): CLIConfig | null {
       from: { type: "string", multiple: true },
       clean: { type: "boolean" },
       "no-clean": { type: "boolean" },
+      submodule: { type: "boolean" },
       dedup: { type: "boolean" },
       help: { type: "boolean", short: "h" },
     },
@@ -102,6 +104,7 @@ function parseCliArgs(): CLIConfig | null {
       pushTargets: toArgs.map((t) => parsePushTarget(t)),
       pullBranch: "",
       pullSources: [],
+      pullMode: "copy",
       dedup,
       clean: clean as boolean,
     };
@@ -120,8 +123,9 @@ function parseCliArgs(): CLIConfig | null {
       pushTargets: [],
       pullBranch: (values.branch as string) || "main",
       pullSources: fromArgs.map(parsePullSource),
+      pullMode: values.submodule ? "submodule" : "copy",
       dedup,
-      clean: true, // irrelevant for pull-only; kept for CLIConfig uniformity
+      clean: true,
     };
   }
 

@@ -1,7 +1,7 @@
 import { input, confirm, select } from "@inquirer/prompts";
 import { execFileSync, execSync } from "node:child_process";
 import pc from "picocolors";
-import type { CLIConfig, GitContext, PullSource, PushTarget } from "./types.js";
+import type { CLIConfig, GitContext, PullSource, PushTarget, SyncMode } from "./types.js";
 
 type Mode = "push" | "pull" | "both";
 
@@ -78,6 +78,17 @@ async function collectFreshConfig(ctx: GitContext): Promise<CLIConfig> {
     pullSources = await collectPullSources(ctx);
   }
 
+  let pullMode: SyncMode = "copy";
+  if (mode === "pull" || mode === "both") {
+    pullMode = await select<SyncMode>({
+      message: "Pull strategy",
+      choices: [
+        { value: "copy", name: "Copy — clone + rsync files into this repo" },
+        { value: "submodule", name: "Submodule — mount sources as git submodules (bidirectional)" },
+      ],
+    });
+  }
+
   let clean = true;
   if (mode === "push" || mode === "both") {
     clean = await confirm({
@@ -91,7 +102,7 @@ async function collectFreshConfig(ctx: GitContext): Promise<CLIConfig> {
     default: false,
   });
 
-  return { pushSrcPath, pushSrcBranch, pushTargets, pullBranch, pullSources, dedup, clean };
+  return { pushSrcPath, pushSrcBranch, pushTargets, pullBranch, pullSources, pullMode, dedup, clean };
 }
 
 async function collectPushTargets(ctx: GitContext): Promise<PushTarget[]> {
@@ -198,6 +209,7 @@ export async function confirmGeneration(config: CLIConfig): Promise<boolean> {
     console.log();
     console.log(`  ${pc.bold("Pull:")}`);
     console.log(`    Commit branch: ${config.pullBranch}`);
+    console.log(`    Mode: ${config.pullMode}`);
     for (let i = 0; i < config.pullSources.length; i++) {
       const s = config.pullSources[i];
       console.log(`    Source ${i + 1}: ${s.srcOwner}/${s.srcRepoName}:${s.srcPath} → ${s.dstPath} (${s.srcBranch})`);

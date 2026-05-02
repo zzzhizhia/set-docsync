@@ -1,3 +1,5 @@
+export type SyncMode = "copy" | "submodule";
+
 export interface PushTarget {
   dstOwner: string;
   dstRepoName: string;

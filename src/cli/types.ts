@@ -1,5 +1,5 @@
-import type { PullSource, PushTarget } from "../core/types.js";
-export type { PullSource, PushTarget } from "../core/types.js";
+import type { PullSource, PushTarget, SyncMode } from "../core/types.js";
+export type { PullSource, PushTarget, SyncMode } from "../core/types.js";
 
 export interface GitContext {
   root: string;
@@ -16,6 +16,8 @@ export interface CLIConfig {
   // Pull (sources exist → generated workflow triggers on schedule)
   pullBranch: string;
   pullSources: PullSource[];
+  // Pull strategy: "copy" (clone+rsync, default) or "submodule" (git submodule).
+  pullMode: SyncMode;
   // Single global toggles applied uniformly to every push target / pull
   // source. v1 had per-target flags; v2 collapsed them to match the Action's
   // input shape (one `dedup:` / `clean:` input, not N of them).

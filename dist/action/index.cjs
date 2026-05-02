@@ -19847,6 +19847,9 @@ function setFailed(message) {
 function error(message, properties = {}) {
   issueCommand("error", toCommandProperties(properties), message instanceof Error ? message.toString() : message);
 }
+function warning(message, properties = {}) {
+  issueCommand("warning", toCommandProperties(properties), message instanceof Error ? message.toString() : message);
+}
 function info(message) {
   process.stdout.write(message + os4.EOL);
 }
@@ -19906,6 +19909,7 @@ function normalizePath(input) {
 
 // src/core/sync.ts
 var import_promises3 = require("fs/promises");
+var import_node_fs = require("fs");
 var import_node_path3 = require("path");
 
 // src/core/dedup.ts
@@ -20114,6 +20118,10 @@ async function runPush(opts) {
 }
 async function runPull(opts) {
   if (opts.sources.length === 0) return;
+  if (opts.mode === "submodule") return runPullSubmodule(opts);
+  return runPullCopy(opts);
+}
+async function runPullCopy(opts) {
   const state = await readState(opts.statePath);
   const shas = { ...state.sourceSHAs ?? {} };
   let syncedAny = false;
@@ -20152,6 +20160,57 @@ async function runPull(opts) {
   const stamp = (/* @__PURE__ */ new Date()).toISOString().replace(/\.\d{3}Z$/, "Z");
   await commitAndPush(opts.hubRoot, `docs: pull from source repos @ ${stamp}`);
 }
+async function isSubmoduleRegistered(hubRoot, subPath) {
+  try {
+    const content = await (0, import_promises3.readFile)((0, import_node_path3.join)(hubRoot, ".gitmodules"), "utf-8");
+    return content.split("\n").some((line) => line.trim() === `path = ${subPath}`);
+  } catch {
+    return false;
+  }
+}
+async function runPullSubmodule(opts) {
+  const { hubRoot, sources, token } = opts;
+  await exec("git", [
+    "config",
+    "--global",
+    `url.https://x-access-token:${encodeURIComponent(token)}@github.com/.insteadOf`,
+    "https://github.com/"
+  ]);
+  for (const source of sources) {
+    const { srcOwner, srcRepoName, srcBranch, srcPath, dstPath } = source;
+    const publicURL = `https://github.com/${srcOwner}/${srcRepoName}.git`;
+    const subPath = dstPath.replace(/\/$/, "") || srcRepoName;
+    if (srcPath && srcPath !== "/") {
+      warning(
+        `Submodule mode syncs entire repos; srcPath "${srcPath}" for ${srcOwner}/${srcRepoName} is ignored.`
+      );
+    }
+    startGroup(`Submodule \u2190 ${srcOwner}/${srcRepoName} (${srcBranch})`);
+    try {
+      const registered = await isSubmoduleRegistered(hubRoot, subPath);
+      if (!registered) {
+        const fullPath = (0, import_node_path3.join)(hubRoot, subPath);
+        if ((0, import_node_fs.existsSync)(fullPath)) {
+          info(`Migrating ${subPath} from copy to submodule`);
+          await exec("git", ["-C", hubRoot, "rm", "-rf", subPath]);
+          await gitConfigBot(hubRoot);
+          await exec("git", ["-C", hubRoot, "commit", "-m", `docs: prepare ${subPath} for submodule`]);
+        }
+        await exec("git", ["-C", hubRoot, "submodule", "add", "--branch", srcBranch, publicURL, subPath]);
+      }
+      await exec("git", ["-C", hubRoot, "submodule", "update", "--init", "--remote", subPath]);
+    } finally {
+      endGroup();
+    }
+  }
+  const stamp = (/* @__PURE__ */ new Date()).toISOString().replace(/\.\d{3}Z$/, "Z");
+  await commitAndPush(hubRoot, `docs: update submodules @ ${stamp}`);
+  await exec(
+    "git",
+    ["config", "--global", "--unset", `url.https://x-access-token:${encodeURIComponent(token)}@github.com/.insteadOf`],
+    { ignoreReturnCode: true }
+  );
+}
 
 // src/action/index.ts
 async function run() {
@@ -20162,6 +20221,11 @@ async function run() {
   const dedup = getBooleanInput("dedup");
   const statePath = getInput("state-path") || ".github/docsync.json";
   const clean = getBooleanInput("clean");
+  const rawMode = getInput("mode") || "copy";
+  if (rawMode !== "copy" && rawMode !== "submodule") {
+    throw new Error(`Invalid mode "${rawMode}". Expected "copy" or "submodule".`);
+  }
+  const mode = rawMode;
   const event = process.env.GITHUB_EVENT_NAME ?? "";
   const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
   const ref = process.env.GITHUB_SHA ?? "HEAD";
@@ -20204,7 +20268,8 @@ async function run() {
       sources,
       token,
       dedup,
-      statePath
+      statePath,
+      mode
     });
   }
 }

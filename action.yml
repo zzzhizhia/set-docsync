@@ -36,6 +36,13 @@ inputs:
     description: Path to the state file that tracks last-synced SHAs per pull source.
     required: false
     default: .github/docsync.json
+  mode:
+    description: |
+      Pull strategy. "copy" (default) clones each source and rsyncs files into this repo.
+      "submodule" registers each source as a git submodule — no copy delay, and you can
+      commit directly inside the submodule to push changes back to the source repo.
+    required: false
+    default: copy
 runs:
   using: node20
   main: dist/action/index.cjs

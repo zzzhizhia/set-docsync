@@ -1,8 +1,9 @@
 import { exec, getExecOutput } from "@actions/exec";
 import * as core from "@actions/core";
-import { rm, mkdir } from "node:fs/promises";
+import { rm, mkdir, readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
-import type { PullSource, PushTarget, State } from "./types.js";
+import type { PullSource, PushTarget, State, SyncMode } from "./types.js";
 import { dedupeDirs } from "./dedup.js";
 import { readState, writeState, shaKey } from "./state.js";
 
@@ -156,11 +157,16 @@ export interface PullOptions {
   token: string;
   dedup: boolean;
   statePath: string;
+  mode: SyncMode;
 }
 
 export async function runPull(opts: PullOptions): Promise<void> {
   if (opts.sources.length === 0) return;
+  if (opts.mode === "submodule") return runPullSubmodule(opts);
+  return runPullCopy(opts);
+}
 
+async function runPullCopy(opts: PullOptions): Promise<void> {
   const state: State = await readState(opts.statePath);
   const shas: Record<string, string> = { ...(state.sourceSHAs ?? {}) };
   let syncedAny = false;
@@ -213,4 +219,64 @@ export async function runPull(opts: PullOptions): Promise<void> {
 
   const stamp = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
   await commitAndPush(opts.hubRoot, `docs: pull from source repos @ ${stamp}`);
+}
+
+async function isSubmoduleRegistered(hubRoot: string, subPath: string): Promise<boolean> {
+  try {
+    const content = await readFile(join(hubRoot, ".gitmodules"), "utf-8");
+    return content.split("\n").some((line) => line.trim() === `path = ${subPath}`);
+  } catch {
+    return false;
+  }
+}
+
+async function runPullSubmodule(opts: PullOptions): Promise<void> {
+  const { hubRoot, sources, token } = opts;
+
+  await exec("git", [
+    "config", "--global",
+    `url.https://x-access-token:${encodeURIComponent(token)}@github.com/.insteadOf`,
+    "https://github.com/",
+  ]);
+
+  for (const source of sources) {
+    const { srcOwner, srcRepoName, srcBranch, srcPath, dstPath } = source;
+    const publicURL = `https://github.com/${srcOwner}/${srcRepoName}.git`;
+    const subPath = dstPath.replace(/\/$/, "") || srcRepoName;
+
+    if (srcPath && srcPath !== "/") {
+      core.warning(
+        `Submodule mode syncs entire repos; srcPath "${srcPath}" for ${srcOwner}/${srcRepoName} is ignored.`,
+      );
+    }
+
+    core.startGroup(`Submodule ← ${srcOwner}/${srcRepoName} (${srcBranch})`);
+    try {
+      const registered = await isSubmoduleRegistered(hubRoot, subPath);
+
+      if (!registered) {
+        const fullPath = join(hubRoot, subPath);
+        if (existsSync(fullPath)) {
+          core.info(`Migrating ${subPath} from copy to submodule`);
+          await exec("git", ["-C", hubRoot, "rm", "-rf", subPath]);
+          await gitConfigBot(hubRoot);
+          await exec("git", ["-C", hubRoot, "commit", "-m", `docs: prepare ${subPath} for submodule`]);
+        }
+        await exec("git", ["-C", hubRoot, "submodule", "add", "--branch", srcBranch, publicURL, subPath]);
+      }
+
+      await exec("git", ["-C", hubRoot, "submodule", "update", "--init", "--remote", subPath]);
+    } finally {
+      core.endGroup();
+    }
+  }
+
+  const stamp = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+  await commitAndPush(hubRoot, `docs: update submodules @ ${stamp}`);
+
+  await exec(
+    "git",
+    ["config", "--global", "--unset", `url.https://x-access-token:${encodeURIComponent(token)}@github.com/.insteadOf`],
+    { ignoreReturnCode: true },
+  );
 }

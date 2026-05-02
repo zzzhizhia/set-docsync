@@ -54,6 +54,7 @@ describe("generateYaml", () => {
     ],
     pullBranch: "",
     pullSources: [],
+    pullMode: "copy",
     dedup: false,
     clean: true,
   };
@@ -118,6 +119,7 @@ describe("generateYaml", () => {
       pullSources: [
         { srcOwner: "org", srcRepoName: "wiki", srcPath: "", dstPath: "raw/wiki/", srcBranch: "main" },
       ],
+      pullMode: "copy",
       dedup: false,
       clean: true,
     };
@@ -135,6 +137,7 @@ describe("generateYaml", () => {
       pullSources: [
         { srcOwner: "singularquest", srcRepoName: "website", srcPath: "docs/", dstPath: "docs/website/", srcBranch: "main" },
       ],
+      pullMode: "copy",
       dedup: false,
       clean: true,
     };
@@ -160,6 +163,7 @@ describe("generateYaml", () => {
       pullSources: [
         { srcOwner: "org", srcRepoName: "api", srcPath: "docs/", dstPath: "docs/api/", srcBranch: "main" },
       ],
+      pullMode: "copy",
       dedup: true,
       clean: true,
     };
@@ -187,6 +191,41 @@ describe("generateYaml", () => {
     expect(yaml).toContain("${{ secrets.PAT_DOCSYNC }}");
     expect(yaml).not.toContain("\\${{");
   });
+
+  it("emits mode: submodule when pullMode is submodule", () => {
+    const submoduleConfig: CLIConfig = {
+      pushSrcPath: "",
+      pushSrcBranch: "",
+      pushTargets: [],
+      pullBranch: "main",
+      pullSources: [
+        { srcOwner: "org", srcRepoName: "wiki", srcPath: "", dstPath: "raw/repos/org/wiki/", srcBranch: "main" },
+      ],
+      pullMode: "submodule",
+      dedup: false,
+      clean: true,
+    };
+    const yaml = generateYaml(submoduleConfig);
+    expect(yaml).toContain('mode: "submodule"');
+    expect(yaml).toContain("sources: |");
+  });
+
+  it("omits mode input when pullMode is copy (default)", () => {
+    const copyConfig: CLIConfig = {
+      pushSrcPath: "",
+      pushSrcBranch: "",
+      pushTargets: [],
+      pullBranch: "main",
+      pullSources: [
+        { srcOwner: "org", srcRepoName: "wiki", srcPath: "docs/", dstPath: "docs/wiki/", srcBranch: "main" },
+      ],
+      pullMode: "copy",
+      dedup: false,
+      clean: true,
+    };
+    const yaml = generateYaml(copyConfig);
+    expect(yaml).not.toContain("mode:");
+  });
 });
 
 describe("readExistingConfig", () => {
@@ -207,6 +246,7 @@ describe("readExistingConfig", () => {
       ],
       pullBranch: "",
       pullSources: [],
+      pullMode: "copy",
       dedup: false,
       clean: true,
     };
@@ -227,6 +267,7 @@ describe("readExistingConfig", () => {
       pullSources: [
         { srcOwner: "o", srcRepoName: "r", srcPath: "docs/", dstPath: "docs/r/", srcBranch: "main" },
       ],
+      pullMode: "copy",
       dedup: false,
       clean: true,
       sourceSHAs: { "o/r@main": "deadbeef" },
@@ -377,6 +418,7 @@ describe("normalizeConfig", () => {
       pullSources: [
         { srcOwner: "o", srcRepoName: "r", srcPath: "./src/", dstPath: "/dst", srcBranch: "main" },
       ],
+      pullMode: "copy",
       dedup: false,
       clean: true,
     };
